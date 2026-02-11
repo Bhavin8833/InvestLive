@@ -311,14 +311,14 @@ const HostDashboard = () => {
           <div className="space-y-3 text-sm">
             <div className="flex items-center gap-3">
               <span className="text-muted-foreground w-24">Participant:</span>
-              <code className="bg-secondary rounded-lg px-3 py-1.5 text-foreground font-mono text-xs">
-                {window.location.origin}/session/{session.code}
+              <code className="bg-secondary rounded-lg px-3 py-1.5 text-foreground font-mono text-xs select-all">
+                {`${window.location.origin}${window.location.pathname}#/session/${session.code}`}
               </code>
             </div>
             <div className="flex items-center gap-3">
               <span className="text-muted-foreground w-24">Teacher:</span>
-              <code className="bg-secondary rounded-lg px-3 py-1.5 text-foreground font-mono text-xs">
-                {window.location.origin}/session/{session.code}?role=teacher
+              <code className="bg-secondary rounded-lg px-3 py-1.5 text-foreground font-mono text-xs select-all">
+                {`${window.location.origin}${window.location.pathname}#/session/${session.code}?role=teacher`}
               </code>
             </div>
           </div>
