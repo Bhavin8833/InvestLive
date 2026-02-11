@@ -16,7 +16,25 @@ const ParticipantView = () => {
   const { session, loadSession, addInvestment } = useSession();
   const [amount, setAmount] = useState<number | null>(null);
   const [submitted, setSubmitted] = useState(false);
-  const [participantId] = useState(() => crypto.randomUUID());
+
+  // Persist participant ID
+  const [participantId] = useState(() => {
+    const stored = localStorage.getItem("investlive_participant_id");
+    if (stored) return stored;
+    const newId = crypto.randomUUID();
+    localStorage.setItem("investlive_participant_id", newId);
+    return newId;
+  });
+
+  // Track voted groups for this session
+  const [votedGroups, setVotedGroups] = useState<number[]>(() => {
+    if (!code) return [];
+    try {
+      const stored = localStorage.getItem(`investlive_voted_${code}`);
+      return stored ? JSON.parse(stored) : [];
+    } catch { return []; }
+  });
+
   const [groupNumber] = useState(() => {
     const stored = sessionStorage.getItem(`investlive_group_${code}`);
     if (stored) return parseInt(stored);
@@ -29,8 +47,6 @@ const ParticipantView = () => {
   const teacherOptions = Array.from({ length: 11 }, (_, i) => i * 5);
 
 
-
-
   // Load session on mount
   useEffect(() => {
     if (code) {
@@ -38,11 +54,14 @@ const ParticipantView = () => {
     }
   }, [code, loadSession]);
 
-  // Reset submission when presenting group changes
+  // Check if already voted when presenting group changes
   useEffect(() => {
-    setSubmitted(false);
-    setAmount(null);
-  }, [session?.currentPresentingGroup]);
+    if (session?.currentPresentingGroup !== null && session?.currentPresentingGroup !== undefined) {
+      const hasVoted = votedGroups.includes(session.currentPresentingGroup);
+      setSubmitted(hasVoted);
+      setAmount(null);
+    }
+  }, [session?.currentPresentingGroup, votedGroups]);
 
   const handleSubmit = () => {
     if (!session || amount === null || amount < 0 || amount > maxInvestment || session.currentPresentingGroup === null) return;
@@ -52,6 +71,13 @@ const ParticipantView = () => {
 
     addInvestment(session.currentPresentingGroup, amount, isTeacher ? "teacher" : "student", participantId);
     setSubmitted(true);
+
+    // Save vote
+    const newVoted = [...votedGroups, session.currentPresentingGroup];
+    setVotedGroups(newVoted);
+    if (code) {
+      localStorage.setItem(`investlive_voted_${code}`, JSON.stringify(newVoted));
+    }
   };
 
   // Chart data for current presenting group
