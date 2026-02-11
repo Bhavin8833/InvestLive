@@ -31,6 +31,13 @@ const ParticipantView = () => {
 
 
 
+  // Load session on mount
+  useEffect(() => {
+    if (code) {
+      loadSession(code);
+    }
+  }, [code, loadSession]);
+
   // Reset submission when presenting group changes
   useEffect(() => {
     setSubmitted(false);
