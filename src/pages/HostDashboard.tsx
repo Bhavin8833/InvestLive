@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,18 +7,39 @@ import { motion, AnimatePresence } from "framer-motion";
 import AnimatedNumber from "@/components/AnimatedNumber";
 import {
   BarChart3, Users, Play, Pause, RotateCcw, Download,
-  Copy, Check, ArrowLeft, Trophy, Settings, X, TrendingUp
+  Copy, Check, ArrowLeft, Trophy, Settings, X, TrendingUp, LogOut
 } from "lucide-react";
 
 const presetGroups = [10, 20, 50];
 
 const HostDashboard = () => {
-  const { session, startSession, updateSession, resetSession } = useSession();
+  const { session, startSession, updateSession, resetSession, loadSession, logout } = useSession();
   const [customCount, setCustomCount] = useState("");
   const [copied, setCopied] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(true);
+
+  // Restore session on mount
+  useEffect(() => {
+    const restoreSession = async () => {
+      const savedCode = localStorage.getItem("investlive_host_code");
+      if (savedCode) {
+        await loadSession(savedCode);
+      }
+      setIsRestoring(false);
+    };
+    restoreSession();
+  }, [loadSession]);
 
   const handleStart = (count: number) => {
-    if (count >= 2 && count <= 100) startSession(count);
+    if (count >= 2 && count <= 100) {
+      const newSession = startSession(count);
+      localStorage.setItem("investlive_host_code", newSession.code);
+    }
+  };
+
+  const handleExit = () => {
+    localStorage.removeItem("investlive_host_code");
+    logout();
   };
 
   const copyCode = () => {
@@ -43,6 +64,14 @@ const HostDashboard = () => {
       return { ...s, groups };
     });
   };
+
+  if (isRestoring) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   // Setup screen
   if (!session) {
@@ -236,6 +265,9 @@ const HostDashboard = () => {
           </Button>
           <Button variant="outline" className="rounded-xl">
             <Download className="w-4 h-4 mr-1" /> Export
+          </Button>
+          <Button variant="outline" className="rounded-xl" onClick={handleExit}>
+            <LogOut className="w-4 h-4 mr-1" /> Exit
           </Button>
           {presenting !== null && (
             <div className="flex items-center gap-2 bg-primary/10 rounded-xl px-4 py-2 ml-auto">

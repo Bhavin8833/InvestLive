@@ -198,5 +198,9 @@ export function useSession() {
         };
     }, [session?.code]); // Re-subscribe if code changes
 
-    return { session, startSession, updateSession, loadSession, addInvestment, resetSession };
+    const logout = useCallback(() => {
+        setSession(null);
+    }, []);
+
+    return { session, startSession, updateSession, loadSession, addInvestment, resetSession, logout };
 }
