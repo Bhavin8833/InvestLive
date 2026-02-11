@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import { supabase } from "./supabase";
 
 export interface Group {
     id: string;
@@ -58,63 +59,47 @@ export function createSession(totalGroups: number): Session {
 
 export function useSession() {
     const [session, setSession] = useState<Session | null>(null);
-    const lastStrRef = useRef<string | null>(null);
+    const sessionRef = useRef<Session | null>(null);
 
-    const loadFromStorage = useCallback(() => {
-        const stored = localStorage.getItem("investlive_session");
-        if (stored) {
-            if (stored !== lastStrRef.current) {
-                try {
-                    const parsed = JSON.parse(stored);
-                    setSession(parsed);
-                    lastStrRef.current = stored;
-                } catch (e) {
-                    console.error("Failed to parse session", e);
-                }
-            }
-        } else {
-            if (lastStrRef.current !== null) {
-                setSession(null);
-                lastStrRef.current = null;
-            }
+    // Sync ref
+    useEffect(() => {
+        sessionRef.current = session;
+    }, [session]);
+
+    const loadSession = useCallback(async (code: string) => {
+        const { data, error } = await supabase
+            .from('sessions')
+            .select('*')
+            .eq('code', code)
+            .single();
+
+        if (error) {
+            console.error('Error loading session:', error);
+            return null;
         }
+
+        if (data) {
+            setSession(data.data as Session); // 'data' column contains the JSON payload
+            return data.data as Session;
+        }
+        return null;
     }, []);
 
-    useEffect(() => {
-        loadFromStorage();
-
-        const channel = new BroadcastChannel("invest_live_updates");
-        channel.onmessage = (event) => {
-            if (event.data === "update") {
-                loadFromStorage();
-            }
-        };
-
-        const handleStorage = (e: StorageEvent) => {
-            if (e.key === "investlive_session" || e.key === null) {
-                loadFromStorage();
-            }
-        };
-        window.addEventListener("storage", handleStorage);
-
-        const interval = setInterval(loadFromStorage, 1000);
-
-        return () => {
-            channel.close();
-            window.removeEventListener("storage", handleStorage);
-            clearInterval(interval);
-        };
-    }, [loadFromStorage]);
-
-    const saveSession = useCallback((newSession: Session) => {
-        const str = JSON.stringify(newSession);
-        localStorage.setItem("investlive_session", str);
-        lastStrRef.current = str;
+    const saveSession = useCallback(async (newSession: Session) => {
+        // Optimistic update
         setSession(newSession);
 
-        const channel = new BroadcastChannel("invest_live_updates");
-        channel.postMessage("update");
-        channel.close();
+        const { error } = await supabase
+            .from('sessions')
+            .upsert({
+                code: newSession.code,
+                data: newSession
+            }, { onConflict: 'code' });
+
+        if (error) {
+            console.error('Error saving session:', error);
+            // Revert on error? For now, we rely on next subscription update
+        }
     }, []);
 
     const startSession = useCallback((totalGroups: number) => {
@@ -127,43 +112,10 @@ export function useSession() {
         setSession((prev) => {
             if (!prev) return prev;
             const updated = updater(prev);
-            const str = JSON.stringify(updated);
-            localStorage.setItem("investlive_session", str);
-            lastStrRef.current = str;
-
-            const channel = new BroadcastChannel("invest_live_updates");
-            channel.postMessage("update");
-            channel.close();
-
+            saveSession(updated);
             return updated;
         });
-    }, []);
-
-    const loadSession = useCallback((code: string): Session | null => {
-        const stored = localStorage.getItem("investlive_session");
-        if (stored) {
-            if (stored !== lastStrRef.current) {
-                try {
-                    const s = JSON.parse(stored) as Session;
-                    if (s.code === code) {
-                        setSession(s);
-                        lastStrRef.current = stored;
-                        return s;
-                    }
-                } catch (e) { console.error(e); }
-            } else {
-                if (session && session.code === code) return session;
-                if (!session) {
-                    const s = JSON.parse(stored) as Session;
-                    if (s.code === code) {
-                        setSession(s);
-                        return s;
-                    }
-                }
-            }
-        }
-        return null;
-    }, [session]);
+    }, [saveSession]);
 
     const addInvestment = useCallback(
         (groupIndex: number, amount: number, role: "student" | "teacher", participantId: string) => {
@@ -199,6 +151,36 @@ export function useSession() {
             })),
         }));
     }, [updateSession]);
+
+    // Real-time subscription
+    useEffect(() => {
+        if (!session?.code) return;
+
+        const channel = supabase
+            .channel(`session-${session.code}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'sessions',
+                    filter: `code=eq.${session.code}`,
+                },
+                (payload) => {
+                    const newData = (payload.new as any).data as Session;
+                    // Only update if data is different and newer (simple check)
+                    // For now, simpler: just update
+                    if (JSON.stringify(newData) !== JSON.stringify(sessionRef.current)) {
+                        setSession(newData);
+                    }
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [session?.code]); // Re-subscribe if code changes
 
     return { session, startSession, updateSession, loadSession, addInvestment, resetSession };
 }
