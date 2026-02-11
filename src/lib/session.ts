@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { supabase } from "./supabase";
+import { toast } from "sonner";
 
 export interface Group {
     id: string;
@@ -67,6 +68,7 @@ export function useSession() {
     }, [session]);
 
     const loadSession = useCallback(async (code: string) => {
+        console.log("Loading session:", code);
         const { data, error } = await supabase
             .from('sessions')
             .select('*')
@@ -75,12 +77,17 @@ export function useSession() {
 
         if (error) {
             console.error('Error loading session:', error);
+            toast.error(`Error loading session: ${error.message}`);
             return null;
         }
 
         if (data) {
+            console.log("Session loaded:", data.data);
             setSession(data.data as Session); // 'data' column contains the JSON payload
             return data.data as Session;
+        } else {
+            console.warn("No session found for code:", code);
+            toast.warning("Session not found. Please check the code.");
         }
         return null;
     }, []);
@@ -99,12 +106,14 @@ export function useSession() {
         if (error) {
             console.error('Error saving session:', error);
             // Revert on error? For now, we rely on next subscription update
+            toast.error(`Database Error: ${error.message}`);
         }
     }, []);
 
     const startSession = useCallback((totalGroups: number) => {
         const newSession = createSession(totalGroups);
         saveSession(newSession);
+        toast.success(`Session ${newSession.code} started!`);
         return newSession;
     }, [saveSession]);
 
@@ -175,7 +184,14 @@ export function useSession() {
                     }
                 }
             )
-            .subscribe();
+            .subscribe((status) => {
+                if (status === 'SUBSCRIBED') {
+                    // toast.success("Connected to live updates");
+                }
+                if (status === 'CHANNEL_ERROR') {
+                    toast.error("Live connection failed. Check internet.");
+                }
+            });
 
         return () => {
             supabase.removeChannel(channel);
